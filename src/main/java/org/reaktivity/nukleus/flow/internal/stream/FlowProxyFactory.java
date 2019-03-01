@@ -16,6 +16,7 @@
 package org.reaktivity.nukleus.flow.internal.stream;
 
 import static java.util.Objects.requireNonNull;
+import static org.reaktivity.nukleus.buffer.BufferPool.NO_SLOT;
 
 import java.util.function.LongSupplier;
 import java.util.function.LongUnaryOperator;
@@ -23,6 +24,7 @@ import java.util.function.LongUnaryOperator;
 import org.agrona.DirectBuffer;
 import org.agrona.MutableDirectBuffer;
 import org.agrona.collections.Long2ObjectHashMap;
+import org.reaktivity.nukleus.buffer.BufferPool;
 import org.reaktivity.nukleus.flow.internal.FlowConfiguration;
 import org.reaktivity.nukleus.flow.internal.types.OctetsFW;
 import org.reaktivity.nukleus.flow.internal.types.control.RouteFW;
@@ -31,6 +33,7 @@ import org.reaktivity.nukleus.flow.internal.types.stream.BeginFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.EndFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.ResetFW;
+import org.reaktivity.nukleus.flow.internal.types.stream.SignalFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.WindowFW;
 import org.reaktivity.nukleus.function.MessageConsumer;
 import org.reaktivity.nukleus.function.MessageFunction;
@@ -46,11 +49,13 @@ public final class FlowProxyFactory implements StreamFactory
     private final DataFW dataRO = new DataFW();
     private final EndFW endRO = new EndFW();
     private final AbortFW abortRO = new AbortFW();
+    private final SignalFW signalRO = new SignalFW();
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
     private final AbortFW.Builder abortRW = new AbortFW.Builder();
+    private final SignalFW.Builder signalRW = new SignalFW.Builder();
 
     private final WindowFW windowRO = new WindowFW();
     private final ResetFW resetRO = new ResetFW();
@@ -59,6 +64,7 @@ public final class FlowProxyFactory implements StreamFactory
     private final ResetFW.Builder resetRW = new ResetFW.Builder();
 
     private final RouteManager router;
+    private final BufferPool bufferPool;
     private final MutableDirectBuffer writeBuffer;
     private final LongUnaryOperator supplyInitialId;
     private final LongUnaryOperator supplyReplyId;
@@ -71,6 +77,7 @@ public final class FlowProxyFactory implements StreamFactory
     public FlowProxyFactory(
         FlowConfiguration config,
         RouteManager router,
+        BufferPool bufferPool,
         MutableDirectBuffer writeBuffer,
         LongUnaryOperator supplyInitialId,
         LongUnaryOperator supplyReplyId,
@@ -78,6 +85,7 @@ public final class FlowProxyFactory implements StreamFactory
         LongSupplier supplyCorrelationId)
     {
         this.router = requireNonNull(router);
+        this.bufferPool = requireNonNull(bufferPool);
         this.writeBuffer = requireNonNull(writeBuffer);
         this.supplyInitialId = requireNonNull(supplyInitialId);
         this.supplyReplyId = requireNonNull(supplyReplyId);
@@ -416,6 +424,10 @@ public final class FlowProxyFactory implements StreamFactory
 
         private int replyBudget;
         private int replyPadding;
+        private int replySlot;
+        private int replySlotOffset;
+        private int replySignals;
+        private MessageConsumer signaler;
 
         FlowProxyConnect(
             long routeId)
@@ -425,12 +437,14 @@ public final class FlowProxyFactory implements StreamFactory
             this.replyId = supplyReplyId.applyAsLong(initialId);
             this.correlationId = supplyCorrelationId.getAsLong();
             this.receiver = router.supplyReceiver(initialId);
+            this.replySlot = NO_SLOT;
         }
 
         private void correlate(
             FlowProxyAccept accept)
         {
             this.accept = accept;
+            this.signaler = router.supplyReceiver(accept.initialId);
         }
 
         private void onStream(
@@ -456,6 +470,10 @@ public final class FlowProxyFactory implements StreamFactory
             case AbortFW.TYPE_ID:
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onAbort(abort);
+                break;
+            case SignalFW.TYPE_ID:
+                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
+                onSignal(signal);
                 break;
             default:
                 doReject(receiver, routeId, initialId);
@@ -502,22 +520,103 @@ public final class FlowProxyFactory implements StreamFactory
             DataFW data)
         {
             final long traceId = data.trace();
-            final int flags = data.flags();
-            final long groupId = data.groupId();
-            final int padding = data.padding();
-            final OctetsFW payload = data.payload();
-            final OctetsFW extension = data.extension();
+            final int dataSize = data.sizeof();
 
-            replyBudget -= payload.sizeof() + padding;
+            final int replySlotSize = bufferPool.slotCapacity();
 
-            if (replyBudget < 0)
+            replyBudget -= data.length() + data.padding();
+
+            if (replySlot == NO_SLOT)
+            {
+                replySlot = bufferPool.acquire(replyId);
+            }
+
+            if (replyBudget < 0 || replySlot == NO_SLOT)
             {
                 doReject(receiver, routeId, initialId);
                 accept.onRejected(traceId);
             }
+            else if (replySlotOffset == 0 && dataSize + Integer.BYTES > replySlotSize)
+            {
+                assert replySlot != NO_SLOT;
+                assert replySlotOffset == 0;
+
+                final int flags = data.flags();
+                final long groupId = data.groupId();
+                final int padding = data.padding();
+                final OctetsFW payload = data.payload();
+                final OctetsFW extension = data.extension();
+
+                accept.send(traceId, flags, groupId, padding, payload, extension);
+
+                bufferPool.release(replySlot);
+                replySlot = NO_SLOT;
+            }
             else
             {
-                accept.send(traceId, flags, groupId, padding, payload, extension);
+                assert replySlot != NO_SLOT;
+
+                final MutableDirectBuffer replyBuf = bufferPool.buffer(replySlot);
+
+                if (replySlotOffset != 0 && replySlotOffset + dataSize > replySlotSize)
+                {
+                    flush(replyBuf, Integer.BYTES, replySlotOffset);
+                    replySlotOffset = 0;
+                }
+
+                if (replySlotOffset == 0)
+                {
+                    final DirectBuffer dataBuf = data.buffer();
+                    final int dataOffset = data.offset();
+                    final int extensionSize = data.extension().sizeof();
+
+                    replyBuf.putInt(0, extensionSize);
+                    replyBuf.putBytes(Integer.BYTES, dataBuf, dataOffset, dataSize);
+                    replySlotOffset += Integer.BYTES + dataSize;
+                }
+                else
+                {
+                    final OctetsFW fragment = data.payload();
+                    final DirectBuffer fragmentBuf = fragment.buffer();
+                    final int fragmentOffset = fragment.offset();
+                    final int fragmentSize = fragment.sizeof();
+                    final int flagsOffset = Integer.BYTES + DataFW.FIELD_OFFSET_FLAGS;
+                    final int flags = replyBuf.getInt(flagsOffset);
+                    final int newFlags = flags | (data.flags() & ~0x01) | (data.flags() & 0x02);
+                    final int lengthOffset = Integer.BYTES + DataFW.FIELD_OFFSET_LENGTH;
+                    final int length = replyBuf.getInt(lengthOffset);
+                    final int newLength = length + fragmentSize;
+                    final int extensionSize = replyBuf.getInt(0);
+                    final int extensionOffset = replySlotOffset - extensionSize;
+                    final int newExtensionOffset = replySlotOffset + fragmentSize - extensionSize;
+
+                    replyBuf.putInt(flagsOffset, newFlags);
+                    replyBuf.putInt(lengthOffset, newLength);
+                    replyBuf.putBytes(newExtensionOffset, replyBuf, extensionOffset, extensionSize);
+                    replyBuf.putBytes(extensionOffset, fragmentBuf, fragmentOffset, fragmentSize);
+                    replySlotOffset += fragmentSize;
+                }
+
+                replySignals++;
+                doSignal(signaler, routeId, replyId, traceId, 0L);
+            }
+        }
+
+        private void onSignal(
+            SignalFW signal)
+        {
+            replySignals--;
+
+            if (replySignals == 0L)
+            {
+                assert replySlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(replySlot);
+                flush(replyBuf, Integer.BYTES, replySlotOffset);
+
+                bufferPool.release(replySlot);
+                replySlot = NO_SLOT;
+                replySlotOffset = 0;
             }
         }
 
@@ -644,6 +743,23 @@ public final class FlowProxyFactory implements StreamFactory
                 replyBudget = newReplyBudget;
             }
         }
+
+        private void flush(
+            final DirectBuffer buffer,
+            final int offset,
+            final int limit)
+        {
+            final DataFW data = dataRO.wrap(buffer, offset, limit);
+
+            final long traceId = data.trace();
+            final int flags = data.flags();
+            final long groupId = data.groupId();
+            final int padding = data.padding();
+            final OctetsFW payload = data.payload();
+            final OctetsFW extension = data.extension();
+
+            accept.send(traceId, flags, groupId, padding, payload, extension);
+        }
     }
 
     private void doBegin(
@@ -692,6 +808,23 @@ public final class FlowProxyFactory implements StreamFactory
                 .build();
 
         receiver.accept(data.typeId(), data.buffer(), data.offset(), data.sizeof());
+    }
+
+    private void doSignal(
+        MessageConsumer receiver,
+        long routeId,
+        long streamId,
+        long traceId,
+        long signalId)
+    {
+        final SignalFW signal = signalRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .routeId(routeId)
+                .streamId(streamId)
+                .trace(traceId)
+                .signalId(signalId)
+                .build();
+
+        receiver.accept(signal.typeId(), signal.buffer(), signal.offset(), signal.sizeof());
     }
 
     private void doAbort(

@@ -34,6 +34,7 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
 
     private RouteManager router;
     private MutableDirectBuffer writeBuffer;
+    private Supplier<BufferPool> supplyBufferPool;
     private LongUnaryOperator supplyInitialId;
     private LongUnaryOperator supplyReplyId;
     private LongSupplier supplyTraceId;
@@ -111,15 +112,19 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
     public StreamFactoryBuilder setBufferPoolSupplier(
         Supplier<BufferPool> supplyBufferPool)
     {
+        this.supplyBufferPool = supplyBufferPool;
         return this;
     }
 
     @Override
     public StreamFactory build()
     {
+        final BufferPool bufferPool = supplyBufferPool.get();
+
         return new FlowProxyFactory(
                 config,
                 router,
+                bufferPool,
                 writeBuffer,
                 supplyInitialId,
                 supplyReplyId,

@@ -8,6 +8,7 @@
   <artifactId>nukleus-flow</artifactId>
   <version>develop-SNAPSHOT</version>
   <name>Flow Nukleus Implementation</name>
+  <description>Flow Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-flow.java</url>
 
   <licenses>
@@ -53,8 +54,8 @@
 
     <nukleus.plugin.version>0.33</nukleus.plugin.version>
 
-    <nukleus.flow.spec.version>develop-SNAPSHOT</nukleus.flow.spec.version>
-    <reaktor.version>0.78</reaktor.version>
+    <nukleus.flow.spec.version>0.1</nukleus.flow.spec.version>
+    <reaktor.version>0.84</reaktor.version>
   </properties>
 
   <dependencies>

@@ -27,6 +27,7 @@ import org.junit.rules.Timeout;
 import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.reaktor.test.ReaktorRule;
+import org.reaktivity.reaktor.test.annotation.Configure;
 
 public class ProxyIT
 {
@@ -75,6 +76,17 @@ public class ProxyIT
         "${nukleus}/client.received.data/client",
         "${target}/client.received.data/server"})
     public void shouldReceiveClientData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/proxy/controller",
+        "${nukleus}/client.received.data/client",
+        "${target}/client.received.data/server"})
+    @Configure(name = "reaktor.buffer.slot.capacity", value = "16")
+    public void shouldReceiveClientDataLimitedBuffer() throws Exception
     {
         k3po.finish();
     }
