@@ -74,6 +74,8 @@ public final class FlowProxyFactory implements StreamFactory
     private final MessageFunction<RouteFW> wrapRoute;
     private final Long2ObjectHashMap<FlowProxyConnect> correlations;
 
+    private final int maximumSignals;
+
     public FlowProxyFactory(
         FlowConfiguration config,
         RouteManager router,
@@ -93,6 +95,7 @@ public final class FlowProxyFactory implements StreamFactory
         this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.wrapRoute = this::wrapRoute;
         this.correlations = new Long2ObjectHashMap<>();
+        this.maximumSignals = config.maximumSignals();
     }
 
     @Override
@@ -428,6 +431,7 @@ public final class FlowProxyFactory implements StreamFactory
         private int replySlotOffset;
         private int replySignals;
         private MessageConsumer signaler;
+        private int remainingSignals;
 
         FlowProxyConnect(
             long routeId)
@@ -573,6 +577,7 @@ public final class FlowProxyFactory implements StreamFactory
                     replyBuf.putInt(0, extensionSize);
                     replyBuf.putBytes(Integer.BYTES, dataBuf, dataOffset, dataSize);
                     replySlotOffset += Integer.BYTES + dataSize;
+                    remainingSignals = maximumSignals;
                 }
                 else
                 {
@@ -595,10 +600,22 @@ public final class FlowProxyFactory implements StreamFactory
                     replyBuf.putBytes(newExtensionOffset, replyBuf, extensionOffset, extensionSize);
                     replyBuf.putBytes(extensionOffset, fragmentBuf, fragmentOffset, fragmentSize);
                     replySlotOffset += fragmentSize;
+                    remainingSignals--;
                 }
 
-                replySignals++;
-                doSignal(signaler, routeId, replyId, traceId, 0L);
+                if (remainingSignals == 0)
+                {
+                    flush(replyBuf, Integer.BYTES, replySlotOffset);
+
+                    bufferPool.release(replySlot);
+                    replySlot = NO_SLOT;
+                    replySlotOffset = 0;
+                }
+                else
+                {
+                    replySignals++;
+                    doSignal(signaler, routeId, replyId, traceId, 0L);
+                }
             }
         }
 
@@ -607,7 +624,7 @@ public final class FlowProxyFactory implements StreamFactory
         {
             replySignals--;
 
-            if (replySignals == 0L)
+            if (replySignals == 0 && replySlot != NO_SLOT)
             {
                 assert replySlot != NO_SLOT;
 

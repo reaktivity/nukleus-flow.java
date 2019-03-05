@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-flow</artifactId>
-  <version>0.1</version>
+  <version>0.2</version>
   <name>Flow Nukleus Implementation</name>
   <description>Flow Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-flow.java</url>
@@ -42,7 +42,7 @@
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <checkstyle.config.location>src/conf/checkstyle/configuration.xml</checkstyle.config.location>
     <checkstyle.suppressions.location>src/conf/checkstyle/suppressions.xml</checkstyle.suppressions.location>
-    <jacoco.coverage.ratio>0.76</jacoco.coverage.ratio>
+    <jacoco.coverage.ratio>0.70</jacoco.coverage.ratio>
     <jacoco.missed.count>0</jacoco.missed.count>
 
     <junit.version>4.12</junit.version>
