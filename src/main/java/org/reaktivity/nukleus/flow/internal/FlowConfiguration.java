@@ -19,17 +19,25 @@ import org.reaktivity.nukleus.Configuration;
 
 public class FlowConfiguration extends Configuration
 {
-    private static final ConfigurationDef FAN_CONFIG;
+    public static final IntPropertyDef FLOW_MAXIMUM_SIGNALS;
+
+    private static final ConfigurationDef FLOW_CONFIG;
 
     static
     {
-        final ConfigurationDef config = new ConfigurationDef(String.format("nukleus.%s", FlowNukleus.NAME));
-        FAN_CONFIG = config;
+        ConfigurationDef config = new ConfigurationDef(String.format("nukleus.%s", FlowNukleus.NAME));
+        FLOW_MAXIMUM_SIGNALS = config.property("maximum.signals", Integer.MAX_VALUE);
+        FLOW_CONFIG = config;
     }
 
     public FlowConfiguration(
         Configuration config)
     {
-        super(FAN_CONFIG, config);
+        super(FLOW_CONFIG, config);
+    }
+
+    public int maximumSignals()
+    {
+        return FLOW_MAXIMUM_SIGNALS.getAsInt(this);
     }
 }
