@@ -17,6 +17,7 @@ package org.reaktivity.nukleus.flow.internal.control;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
+import static org.reaktivity.nukleus.route.RouteKind.PROXY;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -57,7 +58,7 @@ public class ControllerIT
         k3po.start();
 
         reaktor.controller(FlowController.class)
-               .routeProxy("flow#0", "target#0")
+               .route(PROXY, "flow#0", "target#0")
                .get();
 
         k3po.finish();
@@ -73,7 +74,7 @@ public class ControllerIT
         k3po.start();
 
         long routeId = reaktor.controller(FlowController.class)
-                .routeProxy("flow#0", "target#0")
+                .route(PROXY, "flow#0", "target#0")
                 .get();
 
         k3po.notifyBarrier("ROUTED_PROXY");
