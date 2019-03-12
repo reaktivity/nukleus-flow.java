@@ -192,6 +192,12 @@ public final class FlowProxyFactory implements StreamFactory
         private int replyPadding;
         private long correlationId;
 
+        private int initialSlot;
+        private int initialSlotOffset;
+        private int initialSignals;
+        private MessageConsumer signaler;
+        private int remainingSignals;
+
         private FlowProxyAccept(
             MessageConsumer receiver,
             long routeId,
@@ -203,12 +209,14 @@ public final class FlowProxyFactory implements StreamFactory
             this.correlationId = correlationId;
             this.receiver = receiver;
             this.replyId = supplyReplyId.applyAsLong(initialId);
+            this.initialSlot = NO_SLOT;
         }
 
         private void correlate(
             FlowProxyConnect connect)
         {
             this.connect = connect;
+            this.signaler = router.supplyReceiver(initialId);
         }
 
         private void onStream(
@@ -234,6 +242,10 @@ public final class FlowProxyFactory implements StreamFactory
             case AbortFW.TYPE_ID:
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onAbort(abort);
+                break;
+            case SignalFW.TYPE_ID:
+                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
+                onSignal(signal);
                 break;
             default:
                 doReject(receiver, routeId, initialId);
@@ -280,22 +292,116 @@ public final class FlowProxyFactory implements StreamFactory
             DataFW data)
         {
             final long traceId = data.trace();
-            final int flags = data.flags();
-            final long groupId = data.groupId();
-            final int padding = data.padding();
-            final OctetsFW payload = data.payload();
-            final OctetsFW extension = data.extension();
+            final int dataSize = data.sizeof();
 
-            initialBudget -= payload.sizeof() + padding;
+            final int replySlotSize = bufferPool.slotCapacity();
 
-            if (initialBudget < 0)
+            initialBudget -= data.length() + data.padding();
+
+            if (initialSlot == NO_SLOT)
+            {
+                initialSlot = bufferPool.acquire(replyId);
+            }
+
+            if (initialBudget < 0 || initialSlot == NO_SLOT)
             {
                 doReject(receiver, routeId, initialId);
                 connect.onRejected(traceId);
             }
+            else if (initialSlotOffset == 0 && dataSize + Integer.BYTES > replySlotSize)
+            {
+                assert initialSlot != NO_SLOT;
+                assert initialSlotOffset == 0;
+
+                final int flags = data.flags();
+                final long groupId = data.groupId();
+                final int padding = data.padding();
+                final OctetsFW payload = data.payload();
+                final OctetsFW extension = data.extension();
+
+                connect.send(traceId, flags, groupId, padding, payload, extension);
+
+                bufferPool.release(initialSlot);
+                initialSlot = NO_SLOT;
+            }
             else
             {
-                connect.send(traceId, flags, groupId, padding, payload, extension);
+                assert initialSlot != NO_SLOT;
+
+                final MutableDirectBuffer initialBuf = bufferPool.buffer(initialSlot);
+
+                if (initialSlotOffset != 0 && initialSlotOffset + dataSize > replySlotSize)
+                {
+                    flush(initialBuf, Integer.BYTES, initialSlotOffset);
+                    initialSlotOffset = 0;
+                }
+
+                if (initialSlotOffset == 0)
+                {
+                    final DirectBuffer dataBuf = data.buffer();
+                    final int dataOffset = data.offset();
+                    final int extensionSize = data.extension().sizeof();
+
+                    initialBuf.putInt(0, extensionSize);
+                    initialBuf.putBytes(Integer.BYTES, dataBuf, dataOffset, dataSize);
+                    initialSlotOffset += Integer.BYTES + dataSize;
+                    remainingSignals = maximumSignals;
+                }
+                else
+                {
+                    final OctetsFW fragment = data.payload();
+                    final DirectBuffer fragmentBuf = fragment.buffer();
+                    final int fragmentOffset = fragment.offset();
+                    final int fragmentSize = fragment.sizeof();
+                    final int flagsOffset = Integer.BYTES + DataFW.FIELD_OFFSET_FLAGS;
+                    final int flags = initialBuf.getInt(flagsOffset);
+                    final int newFlags = flags | (data.flags() & ~0x01) | (data.flags() & 0x02);
+                    final int lengthOffset = Integer.BYTES + DataFW.FIELD_OFFSET_LENGTH;
+                    final int length = initialBuf.getInt(lengthOffset);
+                    final int newLength = length + fragmentSize;
+                    final int extensionSize = initialBuf.getInt(0);
+                    final int extensionOffset = initialSlotOffset - extensionSize;
+                    final int newExtensionOffset = initialSlotOffset + fragmentSize - extensionSize;
+
+                    initialBuf.putInt(flagsOffset, newFlags);
+                    initialBuf.putInt(lengthOffset, newLength);
+                    initialBuf.putBytes(newExtensionOffset, initialBuf, extensionOffset, extensionSize);
+                    initialBuf.putBytes(extensionOffset, fragmentBuf, fragmentOffset, fragmentSize);
+                    initialSlotOffset += fragmentSize;
+                    remainingSignals--;
+                }
+
+                if (remainingSignals == 0)
+                {
+                    flush(initialBuf, Integer.BYTES, initialSlotOffset);
+
+                    bufferPool.release(initialSlot);
+                    initialSlot = NO_SLOT;
+                    initialSlotOffset = 0;
+                }
+                else
+                {
+                    initialSignals++;
+                    doSignal(signaler, routeId, initialId, traceId, 0L);
+                }
+            }
+        }
+
+        private void onSignal(
+            SignalFW signal)
+        {
+            initialSignals--;
+
+            if (initialSignals == 0 && initialSlot != NO_SLOT)
+            {
+                assert initialSlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(initialSlot);
+                flush(replyBuf, Integer.BYTES, initialSlotOffset);
+
+                bufferPool.release(initialSlot);
+                initialSlot = NO_SLOT;
+                initialSlotOffset = 0;
             }
         }
 
@@ -305,6 +411,18 @@ public final class FlowProxyFactory implements StreamFactory
             final long traceId = end.trace();
             final long authorization = end.authorization();
             final OctetsFW extension = end.extension();
+
+            if (initialSlot != NO_SLOT)
+            {
+                assert initialSlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(initialSlot);
+                flush(replyBuf, Integer.BYTES, initialSlotOffset);
+
+                bufferPool.release(initialSlot);
+                initialSlot = NO_SLOT;
+                initialSlotOffset = 0;
+            }
 
             connect.end(traceId, authorization, extension);
         }
@@ -409,6 +527,23 @@ public final class FlowProxyFactory implements StreamFactory
                 doWindow(receiver, routeId, initialId, traceId, initialCredit, minInitialPadding, groupId);
                 initialBudget = maxInitialBudget;
             }
+        }
+
+        private void flush(
+            final DirectBuffer buffer,
+            final int offset,
+            final int limit)
+        {
+            final DataFW data = dataRO.wrap(buffer, offset, limit);
+
+            final long traceId = data.trace();
+            final int flags = data.flags();
+            final long groupId = data.groupId();
+            final int padding = data.padding();
+            final OctetsFW payload = data.payload();
+            final OctetsFW extension = data.extension();
+
+            connect.send(traceId, flags, groupId, padding, payload, extension);
         }
     }
 
@@ -643,6 +778,18 @@ public final class FlowProxyFactory implements StreamFactory
             final long traceId = end.trace();
             final long authorization = end.authorization();
             final OctetsFW extension = end.extension();
+
+            if (replySlot != NO_SLOT)
+            {
+                assert replySlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(replySlot);
+                flush(replyBuf, Integer.BYTES, replySlotOffset);
+
+                bufferPool.release(replySlot);
+                replySlot = NO_SLOT;
+                replySlotOffset = 0;
+            }
 
             accept.end(traceId, authorization, extension);
         }
