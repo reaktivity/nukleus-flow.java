@@ -69,7 +69,6 @@ public final class FlowProxyFactory implements StreamFactory
     private final LongUnaryOperator supplyInitialId;
     private final LongUnaryOperator supplyReplyId;
     private final LongSupplier supplyTraceId;
-    private final LongSupplier supplyCorrelationId;
 
     private final MessageFunction<RouteFW> wrapRoute;
     private final Long2ObjectHashMap<FlowProxyConnect> correlations;
@@ -83,8 +82,7 @@ public final class FlowProxyFactory implements StreamFactory
         MutableDirectBuffer writeBuffer,
         LongUnaryOperator supplyInitialId,
         LongUnaryOperator supplyReplyId,
-        LongSupplier supplyTraceId,
-        LongSupplier supplyCorrelationId)
+        LongSupplier supplyTraceId)
     {
         this.router = requireNonNull(router);
         this.bufferPool = requireNonNull(bufferPool);
@@ -92,7 +90,6 @@ public final class FlowProxyFactory implements StreamFactory
         this.supplyInitialId = requireNonNull(supplyInitialId);
         this.supplyReplyId = requireNonNull(supplyReplyId);
         this.supplyTraceId = requireNonNull(supplyTraceId);
-        this.supplyCorrelationId = requireNonNull(supplyCorrelationId);
         this.wrapRoute = this::wrapRoute;
         this.correlations = new Long2ObjectHashMap<>();
         this.maximumSignals = config.maximumSignals();
@@ -128,7 +125,6 @@ public final class FlowProxyFactory implements StreamFactory
         final MessageConsumer sender)
     {
         final long routeId = begin.routeId();
-        final long correlationId = begin.correlationId();
 
         final MessagePredicate filter = (t, b, o, l) -> true;
         final RouteFW route = router.resolve(routeId, begin.authorization(), filter, wrapRoute);
@@ -139,7 +135,7 @@ public final class FlowProxyFactory implements StreamFactory
         {
             final long initialId = begin.streamId();
 
-            final FlowProxyAccept accept = new FlowProxyAccept(sender, routeId, initialId, correlationId);
+            final FlowProxyAccept accept = new FlowProxyAccept(sender, routeId, initialId);
             final FlowProxyConnect connect = new FlowProxyConnect(route.correlationId());
 
             accept.correlate(connect);
@@ -190,7 +186,6 @@ public final class FlowProxyFactory implements StreamFactory
         private int initialBudget;
         private int replyBudget;
         private int replyPadding;
-        private long correlationId;
 
         private int initialSlot;
         private int initialSlotOffset;
@@ -201,12 +196,10 @@ public final class FlowProxyFactory implements StreamFactory
         private FlowProxyAccept(
             MessageConsumer receiver,
             long routeId,
-            long initialId,
-            long correlationId)
+            long initialId)
         {
             this.routeId = routeId;
             this.initialId = initialId;
-            this.correlationId = correlationId;
             this.receiver = receiver;
             this.replyId = supplyReplyId.applyAsLong(initialId);
             this.initialSlot = NO_SLOT;
@@ -278,8 +271,6 @@ public final class FlowProxyFactory implements StreamFactory
         private void onBegin(
             BeginFW begin)
         {
-            assert correlationId == begin.correlationId();
-
             final long traceId = begin.trace();
             final long authorization = begin.authorization();
             final long affinity = begin.affinity();
@@ -476,7 +467,7 @@ public final class FlowProxyFactory implements StreamFactory
             OctetsFW extension)
         {
             router.setThrottle(replyId, this::onThrottle);
-            doBegin(receiver, routeId, replyId, authorization, traceId, correlationId, affinity, extension);
+            doBegin(receiver, routeId, replyId, authorization, traceId, affinity, extension);
         }
 
         private void send(
@@ -552,7 +543,6 @@ public final class FlowProxyFactory implements StreamFactory
         private final long routeId;
         private final long initialId;
         private final long replyId;
-        private long correlationId;
         private final MessageConsumer receiver;
 
         private FlowProxyAccept accept;
@@ -574,7 +564,6 @@ public final class FlowProxyFactory implements StreamFactory
             this.routeId = routeId;
             this.initialId = supplyInitialId.applyAsLong(routeId);
             this.replyId = supplyReplyId.applyAsLong(initialId);
-            this.correlationId = supplyCorrelationId.getAsLong();
             this.receiver = router.supplyReceiver(initialId);
             this.replySlot = NO_SLOT;
         }
@@ -645,8 +634,6 @@ public final class FlowProxyFactory implements StreamFactory
         private void onBegin(
             BeginFW begin)
         {
-            assert correlationId == begin.correlationId();
-
             final long traceId = begin.trace();
             final long authorization = begin.authorization();
             final long affinity = begin.affinity();
@@ -850,7 +837,7 @@ public final class FlowProxyFactory implements StreamFactory
             long affinity,
             OctetsFW extension)
         {
-            doBegin(receiver, routeId, initialId, authorization, traceId, correlationId, affinity, extension);
+            doBegin(receiver, routeId, initialId, authorization, traceId, affinity, extension);
             router.setThrottle(initialId, this::onThrottle);
         }
 
@@ -932,7 +919,6 @@ public final class FlowProxyFactory implements StreamFactory
         long streamId,
         long authorization,
         long traceId,
-        long correlationId,
         long affinity,
         OctetsFW extension)
     {
@@ -941,7 +927,6 @@ public final class FlowProxyFactory implements StreamFactory
                 .streamId(streamId)
                 .trace(traceId)
                 .authorization(authorization)
-                .correlationId(correlationId)
                 .affinity(affinity)
                 .extension(extension)
                 .build();

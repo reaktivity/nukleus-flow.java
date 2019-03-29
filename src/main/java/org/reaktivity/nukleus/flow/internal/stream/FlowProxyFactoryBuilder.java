@@ -38,7 +38,6 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
     private LongUnaryOperator supplyInitialId;
     private LongUnaryOperator supplyReplyId;
     private LongSupplier supplyTraceId;
-    private LongSupplier supplyCorrelationId;
 
     public FlowProxyFactoryBuilder(
         FlowConfiguration config)
@@ -87,14 +86,6 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
-    public StreamFactoryBuilder setTargetCorrelationIdSupplier(
-        LongSupplier supplyCorrelationId)
-    {
-        this.supplyCorrelationId = supplyCorrelationId;
-        return this;
-    }
-
-    @Override
     public FlowProxyFactoryBuilder setGroupBudgetClaimer(
         LongFunction<IntUnaryOperator> groupBudgetClaimer)
     {
@@ -128,7 +119,6 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
                 writeBuffer,
                 supplyInitialId,
                 supplyReplyId,
-                supplyTraceId,
-                supplyCorrelationId);
+                supplyTraceId);
     }
 }
