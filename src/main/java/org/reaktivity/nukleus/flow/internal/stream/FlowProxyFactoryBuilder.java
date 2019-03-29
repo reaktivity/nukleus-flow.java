@@ -1,5 +1,5 @@
 /**
- * Copyright 2016-2018 The Reaktivity Project
+ * Copyright 2016-2019 The Reaktivity Project
  *
  * The Reaktivity Project licenses this file to you under the Apache License,
  * version 2.0 (the "License"); you may not use this file except in compliance
@@ -38,7 +38,6 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
     private LongUnaryOperator supplyInitialId;
     private LongUnaryOperator supplyReplyId;
     private LongSupplier supplyTraceId;
-    private LongSupplier supplyCorrelationId;
 
     public FlowProxyFactoryBuilder(
         FlowConfiguration config)
@@ -87,14 +86,6 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
-    public StreamFactoryBuilder setTargetCorrelationIdSupplier(
-        LongSupplier supplyCorrelationId)
-    {
-        this.supplyCorrelationId = supplyCorrelationId;
-        return this;
-    }
-
-    @Override
     public FlowProxyFactoryBuilder setGroupBudgetClaimer(
         LongFunction<IntUnaryOperator> groupBudgetClaimer)
     {
@@ -128,7 +119,6 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
                 writeBuffer,
                 supplyInitialId,
                 supplyReplyId,
-                supplyTraceId,
-                supplyCorrelationId);
+                supplyTraceId);
     }
 }
