@@ -236,10 +236,6 @@ public final class FlowProxyFactory implements StreamFactory
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onAbort(abort);
                 break;
-            case SignalFW.TYPE_ID:
-                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
-                onSignal(signal);
-                break;
             default:
                 doReject(receiver, routeId, initialId);
                 break;
@@ -261,6 +257,10 @@ public final class FlowProxyFactory implements StreamFactory
             case WindowFW.TYPE_ID:
                 final WindowFW window = windowRO.wrap(buffer, index, index + length);
                 onWindow(window);
+                break;
+            case SignalFW.TYPE_ID:
+                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
+                onSignal(signal);
                 break;
             default:
                 // ignore
@@ -285,7 +285,7 @@ public final class FlowProxyFactory implements StreamFactory
             final long traceId = data.trace();
             final int dataSize = data.sizeof();
 
-            final int replySlotSize = bufferPool.slotCapacity();
+            final int initialSlotSize = bufferPool.slotCapacity();
 
             initialBudget -= data.length() + data.padding();
 
@@ -299,7 +299,7 @@ public final class FlowProxyFactory implements StreamFactory
                 doReject(receiver, routeId, initialId);
                 connect.onRejected(traceId);
             }
-            else if (initialSlotOffset == 0 && dataSize + Integer.BYTES > replySlotSize)
+            else if (initialSlotOffset == 0 && dataSize + Integer.BYTES > initialSlotSize)
             {
                 assert initialSlot != NO_SLOT;
                 assert initialSlotOffset == 0;
@@ -321,7 +321,7 @@ public final class FlowProxyFactory implements StreamFactory
 
                 final MutableDirectBuffer initialBuf = bufferPool.buffer(initialSlot);
 
-                if (initialSlotOffset != 0 && initialSlotOffset + dataSize > replySlotSize)
+                if (initialSlotOffset != 0 && initialSlotOffset + dataSize > initialSlotSize)
                 {
                     flush(initialBuf, Integer.BYTES, initialSlotOffset);
                     initialSlotOffset = 0;
@@ -373,26 +373,8 @@ public final class FlowProxyFactory implements StreamFactory
                 else
                 {
                     initialSignals++;
-                    doSignal(signaler, routeId, initialId, traceId, 0L);
+                    doSignal(signaler, routeId, replyId, traceId, 0L);
                 }
-            }
-        }
-
-        private void onSignal(
-            SignalFW signal)
-        {
-            initialSignals--;
-
-            if (initialSignals == 0 && initialSlot != NO_SLOT)
-            {
-                assert initialSlot != NO_SLOT;
-
-                final DirectBuffer replyBuf = bufferPool.buffer(initialSlot);
-                flush(replyBuf, Integer.BYTES, initialSlotOffset);
-
-                bufferPool.release(initialSlot);
-                initialSlot = NO_SLOT;
-                initialSlotOffset = 0;
             }
         }
 
@@ -451,6 +433,24 @@ public final class FlowProxyFactory implements StreamFactory
             {
                 final long traceId = window.trace();
                 connect.credit(replyBudget, replyPadding, traceId);
+            }
+        }
+
+        private void onSignal(
+            SignalFW signal)
+        {
+            initialSignals--;
+
+            if (initialSignals == 0 && initialSlot != NO_SLOT)
+            {
+                assert initialSlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(initialSlot);
+                flush(replyBuf, Integer.BYTES, initialSlotOffset);
+
+                bufferPool.release(initialSlot);
+                initialSlot = NO_SLOT;
+                initialSlotOffset = 0;
             }
         }
 
@@ -599,10 +599,6 @@ public final class FlowProxyFactory implements StreamFactory
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onAbort(abort);
                 break;
-            case SignalFW.TYPE_ID:
-                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
-                onSignal(signal);
-                break;
             default:
                 doReject(receiver, routeId, initialId);
                 break;
@@ -624,6 +620,10 @@ public final class FlowProxyFactory implements StreamFactory
             case WindowFW.TYPE_ID:
                 final WindowFW window = windowRO.wrap(buffer, index, index + length);
                 onWindow(window);
+                break;
+            case SignalFW.TYPE_ID:
+                final SignalFW signal = signalRO.wrap(buffer, index, index + length);
+                onSignal(signal);
                 break;
             default:
                 // ignore
@@ -736,26 +736,8 @@ public final class FlowProxyFactory implements StreamFactory
                 else
                 {
                     replySignals++;
-                    doSignal(signaler, routeId, replyId, traceId, 0L);
+                    doSignal(signaler, routeId, initialId, traceId, 0L);
                 }
-            }
-        }
-
-        private void onSignal(
-            SignalFW signal)
-        {
-            replySignals--;
-
-            if (replySignals == 0 && replySlot != NO_SLOT)
-            {
-                assert replySlot != NO_SLOT;
-
-                final DirectBuffer replyBuf = bufferPool.buffer(replySlot);
-                flush(replyBuf, Integer.BYTES, replySlotOffset);
-
-                bufferPool.release(replySlot);
-                replySlot = NO_SLOT;
-                replySlotOffset = 0;
             }
         }
 
@@ -816,6 +798,24 @@ public final class FlowProxyFactory implements StreamFactory
                 final long groupId = window.groupId();
 
                 accept.credit(initialBudget, initialPadding, traceId, groupId);
+            }
+        }
+
+        private void onSignal(
+            SignalFW signal)
+        {
+            replySignals--;
+
+            if (replySignals == 0 && replySlot != NO_SLOT)
+            {
+                assert replySlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(replySlot);
+                flush(replyBuf, Integer.BYTES, replySlotOffset);
+
+                bufferPool.release(replySlot);
+                replySlot = NO_SLOT;
+                replySlotOffset = 0;
             }
         }
 
