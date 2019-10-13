@@ -76,7 +76,7 @@ public final class FlowProxyFactoryBuilder implements StreamFactoryBuilder
     }
 
     @Override
-    public StreamFactoryBuilder setTraceSupplier(
+    public StreamFactoryBuilder setTraceIdSupplier(
         LongSupplier supplyTraceId)
     {
         this.supplyTraceId = supplyTraceId;
