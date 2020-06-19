@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.reaktivity</groupId>
   <artifactId>nukleus-flow</artifactId>
-  <version>0.14</version>
+  <version>0.15</version>
   <name>Flow Nukleus Implementation</name>
   <description>Flow Nukleus Implementation</description>
   <url>https://github.com/reaktivity/nukleus-flow.java</url>
@@ -53,8 +53,8 @@
 
     <nukleus.plugin.version>0.46</nukleus.plugin.version>
 
-    <nukleus.flow.spec.version>0.12</nukleus.flow.spec.version>
-    <reaktor.version>0.130</reaktor.version>
+    <nukleus.flow.spec.version>0.13</nukleus.flow.spec.version>
+    <reaktor.version>0.136</reaktor.version>
   </properties>
 
   <dependencies>
@@ -230,6 +230,9 @@
         <version>2.22.1</version>
         <configuration>
           <argLine>@{argLine}</argLine>
+          <excludes>
+            <exclude/>
+          </excludes>
         </configuration>
       </plugin>
       <plugin>
