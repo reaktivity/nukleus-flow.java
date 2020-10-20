@@ -31,8 +31,10 @@ import org.reaktivity.nukleus.flow.internal.types.OctetsFW;
 import org.reaktivity.nukleus.flow.internal.types.control.RouteFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.AbortFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.BeginFW;
+import org.reaktivity.nukleus.flow.internal.types.stream.ChallengeFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.DataFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.EndFW;
+import org.reaktivity.nukleus.flow.internal.types.stream.FlushFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.FrameFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.ResetFW;
 import org.reaktivity.nukleus.flow.internal.types.stream.SignalFW;
@@ -53,19 +55,23 @@ public final class FlowProxyFactory implements StreamFactory
     private final DataFW dataRO = new DataFW();
     private final EndFW endRO = new EndFW();
     private final AbortFW abortRO = new AbortFW();
-    private final SignalFW signalRO = new SignalFW();
+    private final FlushFW flushRO = new FlushFW();
 
     private final BeginFW.Builder beginRW = new BeginFW.Builder();
     private final DataFW.Builder dataRW = new DataFW.Builder();
     private final EndFW.Builder endRW = new EndFW.Builder();
     private final AbortFW.Builder abortRW = new AbortFW.Builder();
-    private final SignalFW.Builder signalRW = new SignalFW.Builder();
+    private final FlushFW.Builder flushRW = new FlushFW.Builder();
 
     private final WindowFW windowRO = new WindowFW();
     private final ResetFW resetRO = new ResetFW();
+    private final SignalFW signalRO = new SignalFW();
+    private final ChallengeFW challengeRO = new ChallengeFW();
 
     private final WindowFW.Builder windowRW = new WindowFW.Builder();
     private final ResetFW.Builder resetRW = new ResetFW.Builder();
+    private final SignalFW.Builder signalRW = new SignalFW.Builder();
+    private final ChallengeFW.Builder challengeRW = new ChallengeFW.Builder();
 
     private final RouteManager router;
     private final BufferPool bufferPool;
@@ -245,6 +251,10 @@ public final class FlowProxyFactory implements StreamFactory
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onAbort(abort);
                 break;
+            case FlushFW.TYPE_ID:
+                final FlushFW flush = flushRO.wrap(buffer, index, index + length);
+                onFlush(flush);
+                break;
             default:
                 final FrameFW frame = frameRO.wrap(buffer, index, index + length);
                 final long sequence = frame.sequence();
@@ -274,6 +284,10 @@ public final class FlowProxyFactory implements StreamFactory
             case SignalFW.TYPE_ID:
                 final SignalFW signal = signalRO.wrap(buffer, index, index + length);
                 onSignal(signal);
+                break;
+            case ChallengeFW.TYPE_ID:
+                final ChallengeFW challenge = challengeRO.wrap(buffer, index, index + length);
+                onChallenge(challenge);
                 break;
             default:
                 // ignore
@@ -408,6 +422,31 @@ public final class FlowProxyFactory implements StreamFactory
             }
         }
 
+        private void onFlush(
+            FlushFW flush)
+        {
+            final long sequence = flush.sequence();
+            final long traceId = flush.traceId();
+            final long authorization = flush.authorization();
+            final long budgetId = flush.budgetId();
+            final int reserved = flush.reserved();
+            final OctetsFW extension = flush.extension();
+
+            if (initialSlot != NO_SLOT)
+            {
+                assert initialSlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(initialSlot);
+                flush(replyBuf, Integer.BYTES, initialSlotOffset);
+
+                bufferPool.release(initialSlot);
+                initialSlot = NO_SLOT;
+                initialSlotOffset = 0;
+            }
+
+            connect.flush(sequence, traceId, authorization, budgetId, reserved, extension);
+        }
+
         private void onEnd(
             EndFW end)
         {
@@ -500,6 +539,17 @@ public final class FlowProxyFactory implements StreamFactory
             }
         }
 
+        private void onChallenge(
+            ChallengeFW challenge)
+        {
+            final long acknowledge = challenge.acknowledge();
+            final long traceId = challenge.traceId();
+            final long authorization = challenge.authorization();
+            final OctetsFW extension = challenge.extension();
+
+            connect.challenge(acknowledge, traceId, authorization, extension);
+        }
+
         private void onRejected(
             long traceId)
         {
@@ -546,6 +596,24 @@ public final class FlowProxyFactory implements StreamFactory
             assert replyAck <= replySeq;
         }
 
+        private void flush(
+            long sequence,
+            long traceId,
+            long authorization,
+            long budgetId,
+            int reserved,
+            OctetsFW extension)
+        {
+            assert sequence >= replySeq;
+
+            replySeq = sequence;
+
+            assert replyAck <= replySeq;
+
+            doFlush(receiver, routeId, replyId, replySeq, replyAck, replyMax,
+                    traceId, authorization, budgetId, reserved, extension);
+        }
+
         private void end(
             long sequence,
             long traceId,
@@ -589,6 +657,21 @@ public final class FlowProxyFactory implements StreamFactory
             assert initialAck <= initialSeq;
 
             doReset(receiver, routeId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, extension);
+        }
+
+        private void challenge(
+            long acknowledge,
+            long traceId,
+            long authorization,
+            OctetsFW extension)
+        {
+            assert acknowledge >= initialAck;
+
+            initialAck = acknowledge;
+
+            assert initialAck <= initialSeq;
+
+            doChallenge(receiver, routeId, initialId, initialSeq, initialAck, initialMax, traceId, authorization, extension);
         }
 
         private void credit(
@@ -696,6 +779,10 @@ public final class FlowProxyFactory implements StreamFactory
                 final AbortFW abort = abortRO.wrap(buffer, index, index + length);
                 onAbort(abort);
                 break;
+            case FlushFW.TYPE_ID:
+                final FlushFW flush = flushRO.wrap(buffer, index, index + length);
+                onFlush(flush);
+                break;
             default:
                 final FrameFW frame = frameRO.wrap(buffer, index, index + length);
                 final long sequence = frame.sequence();
@@ -725,6 +812,10 @@ public final class FlowProxyFactory implements StreamFactory
             case SignalFW.TYPE_ID:
                 final SignalFW signal = signalRO.wrap(buffer, index, index + length);
                 onSignal(signal);
+                break;
+            case ChallengeFW.TYPE_ID:
+                final ChallengeFW challenge = challengeRO.wrap(buffer, index, index + length);
+                onChallenge(challenge);
                 break;
             default:
                 // ignore
@@ -882,6 +973,31 @@ public final class FlowProxyFactory implements StreamFactory
             accept.end(sequence, traceId, authorization, extension);
         }
 
+        private void onFlush(
+            FlushFW flush)
+        {
+            final long sequence = flush.sequence();
+            final long traceId = flush.traceId();
+            final long authorization = flush.authorization();
+            final long budgetId = flush.budgetId();
+            final int reserved = flush.reserved();
+            final OctetsFW extension = flush.extension();
+
+            if (replySlot != NO_SLOT)
+            {
+                assert replySlot != NO_SLOT;
+
+                final DirectBuffer replyBuf = bufferPool.buffer(replySlot);
+                flush(replyBuf, Integer.BYTES, replySlotOffset);
+
+                bufferPool.release(replySlot);
+                replySlot = NO_SLOT;
+                replySlotOffset = 0;
+            }
+
+            accept.flush(sequence, traceId, authorization, budgetId, reserved, extension);
+        }
+
         private void onAbort(
             AbortFW abort)
         {
@@ -951,6 +1067,17 @@ public final class FlowProxyFactory implements StreamFactory
             }
         }
 
+        private void onChallenge(
+            ChallengeFW challenge)
+        {
+            final long acknowledge = challenge.acknowledge();
+            final long traceId = challenge.traceId();
+            final long authorization = challenge.authorization();
+            final OctetsFW extension = challenge.extension();
+
+            accept.challenge(acknowledge, traceId, authorization, extension);
+        }
+
         private void onRejected(
             long traceId)
         {
@@ -1004,6 +1131,24 @@ public final class FlowProxyFactory implements StreamFactory
             assert initialAck <= initialSeq;
         }
 
+        private void flush(
+            long sequence,
+            long traceId,
+            long authorization,
+            long budgetId,
+            int reserved,
+            OctetsFW extension)
+        {
+            assert sequence >= initialSeq;
+
+            initialSeq = sequence;
+
+            assert initialAck <= initialSeq;
+
+            doFlush(receiver, routeId, initialId, initialSeq, initialAck, initialMax,
+                    traceId, authorization, budgetId, reserved, extension);
+        }
+
         private void end(
             long sequence,
             long traceId,
@@ -1047,6 +1192,21 @@ public final class FlowProxyFactory implements StreamFactory
             assert replyAck <= replySeq;
 
             doReset(receiver, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, extension);
+        }
+
+        private void challenge(
+            long acknowledge,
+            long traceId,
+            long authorization,
+            OctetsFW extension)
+        {
+            assert acknowledge >= replyAck;
+
+            replyAck = acknowledge;
+
+            assert replyAck <= replySeq;
+
+            doChallenge(receiver, routeId, replyId, replySeq, replyAck, replyMax, traceId, authorization, extension);
         }
 
         private void credit(
@@ -1173,6 +1333,35 @@ public final class FlowProxyFactory implements StreamFactory
         receiver.accept(signal.typeId(), signal.buffer(), signal.offset(), signal.sizeof());
     }
 
+    private void doFlush(
+        MessageConsumer receiver,
+        long routeId,
+        long streamId,
+        long sequence,
+        long acknowledge,
+        int maximum,
+        long traceId,
+        long authorization,
+        long budgetId,
+        int reserved,
+        OctetsFW extension)
+    {
+        final FlushFW flush = flushRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+                .routeId(routeId)
+                .streamId(streamId)
+                .sequence(sequence)
+                .acknowledge(acknowledge)
+                .maximum(maximum)
+                .traceId(traceId)
+                .authorization(authorization)
+                .budgetId(budgetId)
+                .reserved(reserved)
+                .extension(extension)
+                .build();
+
+        receiver.accept(flush.typeId(), flush.buffer(), flush.offset(), flush.sizeof());
+    }
+
     private void doAbort(
         MessageConsumer receiver,
         long routeId,
@@ -1271,6 +1460,31 @@ public final class FlowProxyFactory implements StreamFactory
                .build();
 
         sender.accept(reset.typeId(), reset.buffer(), reset.offset(), reset.sizeof());
+    }
+
+    private void doChallenge(
+        final MessageConsumer sender,
+        final long routeId,
+        final long streamId,
+        final long sequence,
+        final long acknowledge,
+        final int maximum,
+        final long traceId,
+        final long authorization,
+        final OctetsFW extension)
+    {
+        final ChallengeFW challenge = challengeRW.wrap(writeBuffer, 0, writeBuffer.capacity())
+               .routeId(routeId)
+               .streamId(streamId)
+               .sequence(sequence)
+               .acknowledge(acknowledge)
+               .maximum(maximum)
+               .traceId(traceId)
+               .authorization(authorization)
+               .extension(extension)
+               .build();
+
+        sender.accept(challenge.typeId(), challenge.buffer(), challenge.offset(), challenge.sizeof());
     }
 
     private void doReject(
