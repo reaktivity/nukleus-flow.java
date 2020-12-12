@@ -12,7 +12,7 @@
 mvnw.cmd clean install
 ```
 
-[build-status-image]: https://travis-ci.com/reaktivity/nukleus-flow.java.svg?branch=develop
-[build-status]: https://travis-ci.com/reaktivity/nukleus-flow.java
+[build-status-image]: https://github.com/reaktivity/nukleus-flow.java/workflows/build/badge.svg
+[build-status]: https://github.com/reaktivity/nukleus-flow.java/actions
 [code-coverage-image]: https://codecov.io/gh/reaktivity/nukleus-flow.java/branch/develop/graph/badge.svg
 [code-coverage]: https://codecov.io/gh/reaktivity/nukleus-flow.java
