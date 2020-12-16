@@ -690,7 +690,7 @@ public final class FlowProxyFactory implements StreamFactory
 
                 initialMax = minInitialMax;
 
-                doWindow(receiver, routeId, initialId, initialSeq, initialSeq, initialMax, traceId, budgetId, minInitialPad);
+                doWindow(receiver, routeId, initialId, initialSeq, initialAck, initialMax, traceId, budgetId, minInitialPad);
             }
         }
 
