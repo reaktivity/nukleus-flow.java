@@ -65,7 +65,27 @@ public class ProxyIT
         "${route}/proxy/controller",
         "${nukleus}/client.sent.data/client",
         "${target}/client.sent.data/server"})
-    public void shouldSendClientData() throws Exception
+    public void shouldReceiveClientSentData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/proxy/controller",
+        "${nukleus}/client.sent.flush/client",
+        "${target}/client.sent.flush/server"})
+    public void shouldReceiveClientSentFlush() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/proxy/controller",
+        "${nukleus}/client.sent.challenge/client",
+        "${target}/client.sent.challenge/server"})
+    public void shouldReceiveClientSentChallenge() throws Exception
     {
         k3po.finish();
     }
@@ -75,7 +95,27 @@ public class ProxyIT
         "${route}/proxy/controller",
         "${nukleus}/client.received.data/client",
         "${target}/client.received.data/server"})
-    public void shouldReceiveClientData() throws Exception
+    public void shouldReceiveServerSentData() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/proxy/controller",
+        "${nukleus}/server.sent.flush/client",
+        "${target}/server.sent.flush/server"})
+    public void shouldReceiveServerSentFlush() throws Exception
+    {
+        k3po.finish();
+    }
+
+    @Test
+    @Specification({
+        "${route}/proxy/controller",
+        "${nukleus}/server.sent.challenge/client",
+        "${target}/server.sent.challenge/server"})
+    public void shouldReceiveServerSentChallenge() throws Exception
     {
         k3po.finish();
     }
@@ -86,7 +126,7 @@ public class ProxyIT
         "${nukleus}/client.received.data/client",
         "${target}/client.received.data/server"})
     @Configure(name = "reaktor.buffer.slot.capacity", value = "16")
-    public void shouldReceiveClientDataLimitedBuffer() throws Exception
+    public void shouldReceiveClientSentDataWithLimitedBuffer() throws Exception
     {
         k3po.finish();
     }
@@ -96,7 +136,7 @@ public class ProxyIT
         "${route}/proxy/controller",
         "${nukleus}/client.sent.and.received.data/client",
         "${target}/client.sent.and.received.data/server"})
-    public void shouldSendAndReceiveClientData() throws Exception
+    public void shouldReceiveClientAndServerSentData() throws Exception
     {
         k3po.finish();
     }
