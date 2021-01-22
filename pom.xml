@@ -53,8 +53,8 @@
 
     <nukleus.plugin.version>0.64</nukleus.plugin.version>
 
-    <nukleus.flow.spec.version>develop-SNAPSHOT</nukleus.flow.spec.version>
-    <reaktor.version>develop-SNAPSHOT</reaktor.version>
+    <nukleus.flow.spec.version>0.15</nukleus.flow.spec.version>
+    <reaktor.version>0.155</reaktor.version>
   </properties>
 
   <dependencies>
