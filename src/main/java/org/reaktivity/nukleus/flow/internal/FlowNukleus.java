@@ -15,7 +15,8 @@
  */
 package org.reaktivity.nukleus.flow.internal;
 
-import org.reaktivity.nukleus.Nukleus;
+import org.reaktivity.reaktor.nukleus.ElektronContext;
+import org.reaktivity.reaktor.nukleus.Nukleus;
 
 final class FlowNukleus implements Nukleus
 {
@@ -42,8 +43,9 @@ final class FlowNukleus implements Nukleus
     }
 
     @Override
-    public FlowElektron supplyElektron()
+    public FlowElektron supplyElektron(
+        ElektronContext context)
     {
-        return new FlowElektron(config);
+        return new FlowElektron(config, context);
     }
 }

@@ -17,9 +17,6 @@ module org.reaktivity.nukleus.flow
 {
     requires org.reaktivity.reaktor;
 
-    provides org.reaktivity.nukleus.NukleusFactorySpi
+    provides org.reaktivity.reaktor.nukleus.NukleusFactorySpi
         with org.reaktivity.nukleus.flow.internal.FlowNukleusFactorySpi;
-
-    provides org.reaktivity.nukleus.ControllerFactorySpi
-        with org.reaktivity.nukleus.flow.internal.FlowControllerFactorySpi;
 }

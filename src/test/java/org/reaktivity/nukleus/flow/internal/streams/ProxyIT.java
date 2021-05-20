@@ -17,7 +17,6 @@ package org.reaktivity.nukleus.flow.internal.streams;
 
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.rules.RuleChain.outerRule;
-import static org.reaktivity.reaktor.test.ReaktorRule.EXTERNAL_AFFINITY_MASK;
 
 import org.junit.Rule;
 import org.junit.Test;
@@ -27,14 +26,14 @@ import org.junit.rules.Timeout;
 import org.kaazing.k3po.junit.annotation.Specification;
 import org.kaazing.k3po.junit.rules.K3poRule;
 import org.reaktivity.reaktor.test.ReaktorRule;
+import org.reaktivity.reaktor.test.annotation.Configuration;
 import org.reaktivity.reaktor.test.annotation.Configure;
 
 public class ProxyIT
 {
     private final K3poRule k3po = new K3poRule()
-            .addScriptRoot("route", "org/reaktivity/specification/nukleus/flow/control/route")
-            .addScriptRoot("nukleus", "org/reaktivity/specification/nukleus/flow/streams/proxy")
-            .addScriptRoot("target", "org/reaktivity/specification/flow/proxy");
+        .addScriptRoot("client", "org/reaktivity/specification/nukleus/flow/streams/client")
+        .addScriptRoot("server", "org/reaktivity/specification/nukleus/flow/streams/server");
 
     private final TestRule timeout = new DisableOnDebug(new Timeout(10, SECONDS));
 
@@ -43,88 +42,88 @@ public class ProxyIT
         .commandBufferCapacity(1024)
         .responseBufferCapacity(1024)
         .counterValuesBufferCapacity(8192)
-        .nukleus("flow"::equals)
-        .affinityMask("target#0", EXTERNAL_AFFINITY_MASK)
+        .configurationRoot("org/reaktivity/specification/nukleus/flow/config")
+        .external("server#0")
         .clean();
 
     @Rule
     public final TestRule chain = outerRule(reaktor).around(k3po).around(timeout);
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.connected/client",
-        "${target}/client.connected/server"})
+        "${client}/client.connected/client",
+        "${server}/client.connected/server"})
     public void shouldConnect() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.sent.data/client",
-        "${target}/client.sent.data/server"})
+        "${client}/client.sent.data/client",
+        "${server}/client.sent.data/server"})
     public void shouldReceiveClientSentData() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.sent.flush/client",
-        "${target}/client.sent.flush/server"})
+        "${client}/client.sent.flush/client",
+        "${server}/client.sent.flush/server"})
     public void shouldReceiveClientSentFlush() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.sent.challenge/client",
-        "${target}/client.sent.challenge/server"})
+        "${client}/client.sent.challenge/client",
+        "${server}/client.sent.challenge/server"})
     public void shouldReceiveClientSentChallenge() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.received.data/client",
-        "${target}/client.received.data/server"})
+        "${client}/client.received.data/client",
+        "${server}/client.received.data/server"})
     public void shouldReceiveServerSentData() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/server.sent.flush/client",
-        "${target}/server.sent.flush/server"})
+        "${client}/server.sent.flush/client",
+        "${server}/server.sent.flush/server"})
     public void shouldReceiveServerSentFlush() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/server.sent.challenge/client",
-        "${target}/server.sent.challenge/server"})
+        "${client}/server.sent.challenge/client",
+        "${server}/server.sent.challenge/server"})
     public void shouldReceiveServerSentChallenge() throws Exception
     {
         k3po.finish();
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.received.data/client",
-        "${target}/client.received.data/server"})
+        "${client}/client.received.data/client",
+        "${server}/client.received.data/server"})
     @Configure(name = "reaktor.buffer.slot.capacity", value = "16")
     public void shouldReceiveClientSentDataWithLimitedBuffer() throws Exception
     {
@@ -132,10 +131,10 @@ public class ProxyIT
     }
 
     @Test
+    @Configuration("proxy.json")
     @Specification({
-        "${route}/proxy/controller",
-        "${nukleus}/client.sent.and.received.data/client",
-        "${target}/client.sent.and.received.data/server"})
+        "${client}/client.sent.and.received.data/client",
+        "${server}/client.sent.and.received.data/server"})
     public void shouldReceiveClientAndServerSentData() throws Exception
     {
         k3po.finish();
