@@ -15,7 +15,7 @@
  */
 package org.reaktivity.nukleus.flow.internal;
 
-import org.reaktivity.nukleus.Configuration;
+import org.reaktivity.reaktor.nukleus.Configuration;
 
 public class FlowConfiguration extends Configuration
 {

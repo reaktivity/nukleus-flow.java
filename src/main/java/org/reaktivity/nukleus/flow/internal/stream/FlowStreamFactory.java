@@ -13,13 +13,16 @@
  * License for the specific language governing permissions and limitations
  * under the License.
  */
-module org.reaktivity.nukleus.flow
+package org.reaktivity.nukleus.flow.internal.stream;
+
+import org.reaktivity.reaktor.config.Binding;
+import org.reaktivity.reaktor.nukleus.stream.StreamFactory;
+
+public interface FlowStreamFactory extends StreamFactory
 {
-    requires org.reaktivity.nukleus;
+    void attach(
+        Binding binding);
 
-    provides org.reaktivity.nukleus.NukleusFactorySpi
-        with org.reaktivity.nukleus.flow.internal.FlowNukleusFactorySpi;
-
-    provides org.reaktivity.nukleus.ControllerFactorySpi
-        with org.reaktivity.nukleus.flow.internal.FlowControllerFactorySpi;
+    void detach(
+        long bindingId);
 }
